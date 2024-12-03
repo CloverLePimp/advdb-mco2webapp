@@ -13,8 +13,22 @@ DB_SERVER2 = "mysql+pymysql://root:12345@ccscloud.dlsu.edu.ph:20292/mco2"
 LOG_FILE = "transaction_log.txt"
 RETRY_DELAY = 2  # Delay in seconds before retrying
 
-# Establish a connection to a database
+# Initialize server status in session state
+if 'server_status' not in st.session_state:
+    st.session_state['server_status'] = {
+        DB_SERVER0: True,
+        DB_SERVER1: True,
+        DB_SERVER2: True
+    }
+
+# Function to simulate server downtime
+def set_server_status(db_url, status):
+    st.session_state['server_status'][db_url] = status
+
+# Override get_db_connection to simulate server downtime
 def get_db_connection(db_url):
+    if not st.session_state['server_status'].get(db_url, True):
+        raise Exception(f"Simulated server {db_url} is offline.")
     engine = create_engine(db_url)
     return engine.connect()
 
@@ -210,10 +224,12 @@ def check_duplicate_info_id(info_id):
 
 # Streamlit application
 st.sidebar.title("CRUD Operations")
-page = st.sidebar.selectbox("Select a Page", ["View Data", "Add Record", "Update Record", "Delete Record", "Search Record"])
+page = st.sidebar.selectbox("Select a Page", ["View Data", "Add Record", "Update Record", "Delete Record", "Search Record", "Simulate Server Downtime"])
 
 # Run recovery transactions on page load
-recover_transactions()
+if 'recovered' not in st.session_state:
+    recover_transactions()
+    st.session_state['recovered'] = True
 
 if page == "View Data":
     st.title("Steam Games Dataset Viewer - Server0")
@@ -412,6 +428,21 @@ elif page == "Search Record":
         else:
             st.error("No record found with this Info ID.")
 
+elif page == "Simulate Server Downtime":
+    st.title("Simulate Server Downtime")
+
+    # Form to simulate server downtime
+    with st.form("simulate_downtime_form"):
+        server = st.selectbox("Select Server", [DB_SERVER0, DB_SERVER1, DB_SERVER2])
+        status = st.selectbox("Set Status", ["Online", "Offline"])
+        submit = st.form_submit_button("Set Status")
+
+    if submit:
+        set_server_status(server, status == "Online")
+        st.success(f"Server {server} is now {status.lower()}.")
+
 if __name__ == "__main__":
     # Initial recovery on app start
-    recover_transactions() 
+    if 'recovered' not in st.session_state:
+        recover_transactions()
+        st.session_state['recovered'] = True
