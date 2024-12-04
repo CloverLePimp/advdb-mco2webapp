@@ -21,9 +21,17 @@ if 'server_status' not in st.session_state:
         DB_SERVER2: True
     }
 
+# Initialize write error simulation in session state
+if 'simulate_write_error' not in st.session_state:
+    st.session_state['simulate_write_error'] = False
+
 # Function to simulate server downtime
 def set_server_status(db_url, status):
     st.session_state['server_status'][db_url] = status
+
+# Function to simulate write error
+def set_write_error_simulation(status):
+    st.session_state['simulate_write_error'] = status
 
 # Override get_db_connection to simulate server downtime
 def get_db_connection(db_url):
@@ -65,11 +73,16 @@ def recover_transactions():
         st.warning("Not all servers are online. Skipping recovery.")
         return
 
+    if st.session_state['simulate_write_error']:
+        st.warning("Error writing during recovery. Skipping recovery.")
+        return
+
     try:
         with open(LOG_FILE, "r") as log_file:
             lines = log_file.readlines()
 
         if not lines:
+            st.success("No transactions to recover.")
             return
 
         updated_logs = []
@@ -102,6 +115,8 @@ def recover_transactions():
 
         with open(LOG_FILE, "w") as log_file:
             log_file.writelines(updated_logs)
+
+        st.success("Transaction recovery successful.")
     except Exception as e:
         st.error(f"Error during recovery: {e}")
 
@@ -139,6 +154,8 @@ def fetch_record_by_info_id(info_id):
 
 # Insert data into the database
 def insert_data(data, db_url):
+    if st.session_state['simulate_write_error']:
+        raise Exception("Simulated write error.")
     query = text("""
         INSERT INTO app_info (info_id, name, release_date, price, discount_dlc_count, about, achievements, notes, developers, publishers, categories, genres, tags)
         VALUES (:info_id, :name, :release_date, :price, :discount_dlc_count, :about, :achievements, :notes, :developers, :publishers, :categories, :genres, :tags)
@@ -159,6 +176,8 @@ def insert_data(data, db_url):
 
 # Update data in the database
 def update_data(info_id, updated_data, db_url):
+    if st.session_state['simulate_write_error']:
+        raise Exception("Simulated write error.")
     query = text("""
         UPDATE app_info
         SET name = :name,
@@ -191,6 +210,8 @@ def update_data(info_id, updated_data, db_url):
 
 # Delete data from the database
 def delete_data(info_id, db_url):
+    if st.session_state['simulate_write_error']:
+        raise Exception("Simulated write error.")
     query = text("DELETE FROM app_info WHERE info_id = :info_id")
     try:
         with get_db_connection(db_url) as connection:
@@ -225,6 +246,10 @@ def check_duplicate_info_id(info_id):
 # Streamlit application
 st.sidebar.title("CRUD Operations")
 page = st.sidebar.selectbox("Select a Page", ["View Data", "Add Record", "Update Record", "Delete Record", "Search Record", "Simulate Server Downtime"])
+
+# Button to manually trigger transaction recovery
+if st.sidebar.button("Recover Transactions"):
+    recover_transactions()
 
 # Run recovery transactions on page load
 if 'recovered' not in st.session_state:
@@ -440,6 +465,17 @@ elif page == "Simulate Server Downtime":
     if submit:
         set_server_status(server, status == "Online")
         st.success(f"Server {server} is now {status.lower()}.")
+
+    st.title("Simulate Write Error")
+
+    # Form to simulate write error
+    with st.form("simulate_write_error_form"):
+        write_error_status = st.selectbox("Simulate Write Error", ["Enable", "Disable"])
+        submit_write_error = st.form_submit_button("Set Write Error Simulation")
+
+    if submit_write_error:
+        set_write_error_simulation(write_error_status == "Enable")
+        st.success(f"Write error simulation is now {write_error_status.lower()}.")
 
 if __name__ == "__main__":
     # Initial recovery on app start
