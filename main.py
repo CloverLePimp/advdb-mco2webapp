@@ -376,23 +376,50 @@ elif page == "Update Record":
             'tags': tags
         }
 
-        # Update the record in the central node (Server0)
-        try:
-            update_data(info_id, updated_data, DB_SERVER0)
-        except Exception as e:
-            st.error(f"Error updating record in Server0: {e}")
+        # Fetch the existing record to check the original release date
+        record = fetch_record_by_info_id(info_id)
+        if record:
+            original_release_year = datetime.datetime.strptime(record['release_date'], '%Y-%m-%d').year
+            new_release_year = release_date.year
 
-        # Update the record in the current secondary node
-        release_year = release_date.year
-        try:
-            if release_year < 2010:
-                update_data(info_id, updated_data, DB_SERVER1)
+            # Update the record in the central node (Server0)
+            try:
+                update_data(info_id, updated_data, DB_SERVER0)
+            except Exception as e:
+                st.error(f"Error updating record in Server0: {e}")
+
+            # Check if the release year has changed from before or after 2010
+            if (original_release_year < 2010 and new_release_year >= 2010) or (original_release_year >= 2010 and new_release_year < 2010):
+                # Delete the record from the old secondary server
+                try:
+                    if original_release_year < 2010:
+                        delete_data(info_id, DB_SERVER1)
+                    else:
+                        delete_data(info_id, DB_SERVER2)
+                except Exception as e:
+                    st.error(f"Error deleting record from old secondary server: {e}")
+
+                # Insert the record into the new secondary server
+                try:
+                    if new_release_year < 2010:
+                        insert_data(updated_data, DB_SERVER1)
+                    else:
+                        insert_data(updated_data, DB_SERVER2)
+                except Exception as e:
+                    st.error(f"Error inserting record into new secondary server: {e}")
             else:
-                update_data(info_id, updated_data, DB_SERVER2)
-        except Exception as e:
-            st.error(f"Error updating record in secondary server: {e}")
+                # Update the record in the current secondary node
+                try:
+                    if new_release_year < 2010:
+                        update_data(info_id, updated_data, DB_SERVER1)
+                    else:
+                        update_data(info_id, updated_data, DB_SERVER2)
+                except Exception as e:
+                    st.error(f"Error updating record in secondary server: {e}")
 
-        st.success("Record updated successfully!")
+            st.success("Record updated successfully!")
+        else:
+            st.error("No record found with this Info ID.")
 
 elif page == "Delete Record":
     st.title("Delete a Record")
